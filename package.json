@@ -2,12 +2,22 @@
   "name": "firefox-paperless-ngx",
   "private": true,
   "scripts": {
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "lint": "oxlint && web-ext lint --source-dir ./paperless-ngx",
+    "lint:fix": "oxlint --fix",
     "start:firefox": "web-ext run --source-dir ./paperless-ngx",
-    "lint": "web-ext lint --source-dir ./paperless-ngx",
     "build": "web-ext build --source-dir ./paperless-ngx",
-    "sign": "web-ext sign --channel unlisted --source-dir ./paperless-ngx"
+    "sign": "web-ext sign --channel unlisted --source-dir ./paperless-ngx",
+    "prepare": "husky"
   },
   "dependencies": {
     "web-ext": "^9.4.0"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.2",
+    "oxfmt": "^0.36.0",
+    "oxlint": "^1.51.0"
   }
 }
