@@ -20,8 +20,8 @@ async function getPdfBlobs() {
   return Promise.all(
     blobs.map(async ({ blob, filename }) => ({
       buffer: await blob.arrayBuffer(),
-      filename
-    }))
+      filename,
+    })),
   );
 }
 

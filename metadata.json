@@ -1,11 +1,9 @@
 {
-    "summary": {
-        "en-US": "Sends PDFs to Paperless-ngx."
-    },
-    "categories": [
-        "other"
-    ],
-    "version": {
-        "license": "MIT"
-    }
+  "summary": {
+    "en-US": "Sends PDFs to Paperless-ngx."
+  },
+  "categories": ["other"],
+  "version": {
+    "license": "MIT"
+  }
 }

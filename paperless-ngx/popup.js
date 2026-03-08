@@ -15,7 +15,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // State
   let paperlessUrl = "";
   let apiKey = "";
-  let currentUrl = "";
   let editMode = false;
   let justSaved = false;
 
@@ -26,19 +25,12 @@ document.addEventListener("DOMContentLoaded", () => {
     paperlessUrl = (config.paperlessUrl || "").trim();
     apiKey = (config.apiKey || "").trim();
 
-    // Get current tab URL
-    const [tab] = await browser.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    currentUrl = tab?.url || "";
-
     // Render UI based on state
     render();
 
     // Bind events
-    urlInput.onblur = urlInput.onkeydown = handleUrlInput;
-    keyInput.onblur = keyInput.onkeydown = handleKeyInput;
+    urlInput.onblur = urlInput.onkeydown = handleConfigInput;
+    keyInput.onblur = keyInput.onkeydown = handleConfigInput;
     uploadBtn.onclick = upload;
     editBtn.onclick = toggleEditMode;
     saveBtn.onclick = exitEditMode;
@@ -77,22 +69,13 @@ document.addEventListener("DOMContentLoaded", () => {
     render();
   }
 
-  // Handle URL input events
-  function handleUrlInput(e) {
+  function handleConfigInput(e) {
     if (e.key === "Enter" || e.type === "blur") {
-      save();
+      saveConfig();
     }
   }
 
-  // Handle API key input events
-  function handleKeyInput(e) {
-    if (e.key === "Enter" || e.type === "blur") {
-      save();
-    }
-  }
-
-  // Save configuration
-  async function save() {
+  async function saveConfig() {
     paperlessUrl = urlInput.value.trim();
     apiKey = keyInput.value.trim();
 
@@ -173,6 +156,5 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Start the popup
   init();
 });
