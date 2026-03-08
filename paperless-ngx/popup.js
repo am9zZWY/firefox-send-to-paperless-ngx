@@ -1,7 +1,6 @@
 import { isPdfFromUrl } from "./util.js";
 
-document.addEventListener("DOMContentLoaded", () => {
-  // DOM refs
+document.addEventListener("DOMContentLoaded", async () => {
   const setupEl = document.getElementById("setup");
   const mainEl = document.getElementById("main");
   const urlInput = document.getElementById("urlInput");
@@ -12,149 +11,120 @@ document.addEventListener("DOMContentLoaded", () => {
   const saveMsg = document.getElementById("saveMsg");
   const saveMsgMain = document.getElementById("saveMsgMain");
 
-  // State
   let paperlessUrl = "";
   let apiKey = "";
   let editMode = false;
-  let justSaved = false;
 
-  // Initialize the popup
-  async function init() {
-    // Load saved configuration
-    const config = await browser.storage.local.get(["paperlessUrl", "apiKey"]);
-    paperlessUrl = (config.paperlessUrl || "").trim();
-    apiKey = (config.apiKey || "").trim();
+  const config = await browser.storage.local.get(["paperlessUrl", "apiKey"]);
+  paperlessUrl = (config.paperlessUrl || "").trim();
+  apiKey = (config.apiKey || "").trim();
 
-    // Render UI based on state
+  render();
+
+  urlInput.onblur = keyInput.onblur = saveConfig;
+  urlInput.onkeydown = keyInput.onkeydown = (e) => e.key === "Enter" && saveConfig();
+
+  uploadBtn.onclick = upload;
+  editBtn.onclick = () => {
+    editMode = !editMode;
     render();
+  };
+  saveBtn.onclick = () => {
+    editMode = false;
+    render();
+  };
 
-    // Bind events
-    urlInput.onblur = urlInput.onkeydown = handleConfigInput;
-    keyInput.onblur = keyInput.onkeydown = handleConfigInput;
-    uploadBtn.onclick = upload;
-    editBtn.onclick = toggleEditMode;
-    saveBtn.onclick = exitEditMode;
+  function configured() {
+    return paperlessUrl && apiKey;
   }
 
-  // Render UI based on current state
   function render() {
-    const configured = !!paperlessUrl.trim() && !!apiKey.trim();
+    const ready = configured();
 
-    // Show setup or main view based on configuration and edit mode
-    setupEl.style.display = !configured || editMode ? "block" : "none";
-    mainEl.style.display = configured && !editMode ? "block" : "none";
+    setupEl.style.display = !ready || editMode ? "block" : "none";
+    mainEl.style.display = ready && !editMode ? "block" : "none";
 
     urlInput.value = paperlessUrl;
     keyInput.value = apiKey;
 
-    uploadBtn.disabled = !configured || editMode;
-    uploadBtn.textContent = configured ? "Upload" : "Configure first";
+    uploadBtn.disabled = !ready || editMode;
+    uploadBtn.textContent = ready ? "Upload" : "Configure first";
 
+    editBtn.style.display = ready ? "block" : "none";
     editBtn.textContent = editMode ? "Cancel" : "Edit";
-    editBtn.style.display = configured ? "block" : "none";
 
-    if (!justSaved) {
-      saveMsg.textContent = saveMsgMain.textContent = "";
-    }
-  }
-
-  // Toggle edit mode
-  function toggleEditMode() {
-    editMode = !editMode;
-    render();
-  }
-
-  function exitEditMode() {
-    editMode = false;
-    render();
-  }
-
-  function handleConfigInput(e) {
-    if (e.key === "Enter" || e.type === "blur") {
-      saveConfig();
-    }
+    saveMsg.textContent = "";
+    saveMsgMain.textContent = "";
   }
 
   async function saveConfig() {
     paperlessUrl = urlInput.value.trim();
     apiKey = keyInput.value.trim();
 
-    await browser.storage.local.set({
-      paperlessUrl: paperlessUrl,
-      apiKey: apiKey,
-    });
+    await browser.storage.local.set({ paperlessUrl, apiKey });
 
-    justSaved = true;
     editMode = false;
     saveMsg.textContent = saveMsgMain.textContent = "✓ Saved!";
-    setTimeout(() => {
-      justSaved = false;
-      render();
-    }, 1800);
+    setTimeout(render, 1500);
   }
 
-  // Upload PDF to Paperless
-  async function upload() {
-    saveMsgMain.classList.remove("error");
-    if (!paperlessUrl.trim() || !apiKey.trim()) {
-      return;
-    }
+  function handleResult(result) {
+    if (!result) return;
 
+    if (result.success) {
+      saveMsgMain.textContent = `Uploaded ${result.filename}`;
+      saveMsgMain.classList.remove("error");
+    } else {
+      saveMsgMain.textContent = `Upload failed: ${result.error}`;
+      saveMsgMain.classList.add("error");
+    }
+  }
+
+  async function upload() {
+    if (!configured()) return;
+
+    saveMsgMain.classList.remove("error");
     uploadBtn.disabled = true;
     uploadBtn.textContent = "Uploading...";
 
-    try {
-      const [tab] = await browser.tabs.query({
-        active: true,
-        currentWindow: true,
+    const [tab] = await browser.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+
+    if (tab?.url && isPdfFromUrl(tab.url)) {
+      const result = await browser.runtime.sendMessage({
+        action: "uploadFromUrl",
+        url: tab.url,
       });
-      const response = await browser.tabs.sendMessage(tab.id, {
+      handleResult(result);
+      return;
+    }
+
+    let pdfBuffers = [];
+    try {
+      const res = await browser.tabs.sendMessage(tab.id, {
         action: "getPdfBlobs",
       });
-      const { pdfBuffers } = response;
+      pdfBuffers = res?.pdfBuffers || [];
+    } catch {}
 
-      if (!pdfBuffers || !pdfBuffers.length) {
-        saveMsgMain.textContent = "No PDFs found on this page";
-        saveMsgMain.classList.add("error");
-        return;
-      }
-
-      if (tab?.url && isPdfFromUrl(tab?.url)) {
-        const result = await browser.runtime.sendMessage({
-          action: "uploadFromUrl",
-          url: tab?.url,
-        });
-        if (result.success) {
-          saveMsgMain.textContent = `Uploaded ${result.filename}`;
-          saveMsgMain.classList.remove("error");
-        } else {
-          saveMsgMain.textContent = `Upload failed: ${result.error}`;
-          saveMsgMain.classList.add("error");
-        }
-      }
-
-      for (const { buffer, filename } of pdfBuffers) {
-        const result = await browser.runtime.sendMessage({
-          action: "uploadFromBlob",
-          buffer,
-          filename,
-        });
-        if (result.success) {
-          saveMsgMain.textContent = `Uploaded ${result.filename}`;
-          saveMsgMain.classList.remove("error");
-        } else {
-          saveMsgMain.textContent = `Upload failed: ${result.error}`;
-          saveMsgMain.classList.add("error");
-        }
-      }
-    } catch (err) {
-      saveMsgMain.textContent = `Upload failed: ${err.message}`;
-      saveMsgMain.classList.add("error");
-    } finally {
-      uploadBtn.disabled = false;
-      uploadBtn.textContent = "Upload";
+    if (!pdfBuffers.length) {
+      showMessage("No PDFs found on this page");
+      return;
     }
-  }
 
-  init();
+    for (const pdf of pdfBuffers) {
+      const result = await browser.runtime.sendMessage({
+        action: "uploadFromBlob",
+        buffer: pdf.buffer,
+        filename: pdf.filename,
+      });
+
+      handleResult(result);
+    }
+
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = "Upload";
+  }
 });

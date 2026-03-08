@@ -8,8 +8,7 @@ import { isPdfFromUrl } from "./util.js";
 const getFilename = (url) => {
   try {
     return new URL(url).pathname.split("/").pop() || "document.pdf";
-  } catch (err) {
-    console.error("Invalid URL provided:", err);
+  } catch {
     return "document.pdf";
   }
 };
@@ -19,11 +18,11 @@ const getFilename = (url) => {
  * @returns {Promise<{paperlessUrl: string, apiKey: string}>} - The configuration object.
  */
 async function getConfig() {
-  const config = await browser.storage.local.get(["paperlessUrl", "apiKey"]);
-  return {
-    paperlessUrl: config.paperlessUrl || "",
-    apiKey: config.apiKey || "",
-  };
+  const { paperlessUrl = "", apiKey = "" } = await browser.storage.local.get([
+    "paperlessUrl",
+    "apiKey",
+  ]);
+  return { paperlessUrl, apiKey };
 }
 
 /**
@@ -34,43 +33,36 @@ async function getConfig() {
  * @param {*} filename
  */
 async function upload(pdfBlob, filename) {
-  const { paperlessUrl, apiKey } = await getConfig();
-  if (!paperlessUrl || !apiKey) {
-    throw new Error("Paperless-ngx is not configured.");
+  let { paperlessUrl, apiKey } = await getConfig();
+  if (!paperlessUrl || !apiKey) throw new Error("Paperless-ngx is not configured.");
+
+  if (paperlessUrl.endsWith("/")) {
+    paperlessUrl = paperlessUrl.slice(0, -1);
   }
 
   const formData = new FormData();
   formData.append("document", pdfBlob, filename);
-  return await fetch(`${paperlessUrl}/api/documents/post_document/`, {
+
+  return fetch(`${paperlessUrl}/api/documents/post_document/`, {
     method: "POST",
-    headers: {
-      Authorization: `Token ${apiKey}`,
-    },
+    headers: { Authorization: `Token ${apiKey}` },
     body: formData,
   });
 }
 
-/**
- * Uploads from an URL
- * @param {string} pdfUrl - The URL of the PDF to upload.
- */
 async function uploadFromUrl(pdfUrl) {
   try {
-    if (!isPdfFromUrl(pdfUrl)) {
-      throw new Error("Not a PDF URL");
-    }
+    if (!isPdfFromUrl(pdfUrl)) throw new Error("Not a PDF URL");
+
     const response = await fetch(pdfUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch PDF: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`Failed to fetch PDF: ${response.statusText}`);
+
     const pdfBlob = await response.blob();
     const filename = getFilename(pdfUrl);
-    console.log("Uploading from URL ...");
+
     const uploadResponse = await upload(pdfBlob, filename);
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(errorText);
-    }
+    if (!uploadResponse.ok) throw new Error(await uploadResponse.text());
+
     return { success: true, filename };
   } catch (err) {
     console.error("Upload error:", err);
@@ -86,12 +78,10 @@ async function uploadFromUrl(pdfUrl) {
 async function uploadFromBlob({ buffer, filename }) {
   try {
     const pdfBlob = new Blob([buffer], { type: "application/pdf" });
-    console.log("Uploading from Blob ...");
+
     const uploadResponse = await upload(pdfBlob, filename);
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(errorText);
-    }
+    if (!uploadResponse.ok) throw new Error(await uploadResponse.text());
+
     return { success: true, filename };
   } catch (err) {
     console.error("Upload error:", err);
@@ -99,21 +89,14 @@ async function uploadFromBlob({ buffer, filename }) {
   }
 }
 
-// Handle browser action (toolbar icon click)
-browser.browserAction.onClicked.addListener(async (tab) => {
-  if (tab.url && isPdfFromUrl(tab.url)) {
-    await uploadToPaperless(tab.url);
-  }
+browser.runtime.onMessage.addListener((request) => {
+  if (request.action === "uploadFromUrl") return uploadFromUrl(request.url);
+  if (request.action === "uploadFromBlob") return uploadFromBlob(request);
 });
 
-// Handle messages from other parts of the extension
-browser.runtime.onMessage.addListener(async (request) => {
-  switch (request.action) {
-    case "uploadFromUrl":
-      return await uploadFromUrl(request.url);
-
-    case "uploadFromBlob":
-      return await uploadFromBlob(request);
+browser.browserAction.onClicked.addListener(async (tab) => {
+  if (tab.url && isPdfFromUrl(tab.url)) {
+    await uploadFromUrl(tab.url);
   }
 });
 
@@ -126,10 +109,10 @@ browser.contextMenus.create({
 
 // Handle context menu clicks
 browser.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === "send-to-paperless") {
-    const url = info.linkUrl || tab.url;
-    if (isPdfFromUrl(url)) {
-      await uploadToPaperless(url);
-    }
+  if (info.menuItemId !== "send-to-paperless") return;
+
+  const url = info.linkUrl || tab.url;
+  if (isPdfFromUrl(url)) {
+    await uploadFromUrl(url);
   }
 });
