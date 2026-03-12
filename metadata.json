@@ -10,6 +10,6 @@
   },
   "requires_payment": false,
   "homepage": {
-    "en-US": "https://github.com/am9zZWY/send-to-paperless-ngx"
+    "en-US": "https://github.com/am9zZWY/firefox-send-to-paperless-ngx"
   }
 }
