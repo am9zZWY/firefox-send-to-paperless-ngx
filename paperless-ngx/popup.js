@@ -9,11 +9,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const editBtn = document.getElementById("editBtn");
   const saveBtn = document.getElementById("saveBtn");
   const saveMsg = document.getElementById("saveMsg");
+  const showApiKeyBtn = document.getElementById("viewTokenBtn");
   const saveMsgMain = document.getElementById("saveMsgMain");
 
   let paperlessUrl = "";
   let apiKey = "";
   let editMode = false;
+  let showToken = false;
 
   const config = await browser.storage.local.get(["paperlessUrl", "apiKey"]);
   paperlessUrl = config.paperlessUrl || "";
@@ -35,6 +37,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
   saveBtn.onclick = () => {
     editMode = false;
+    render();
+  };
+  showApiKeyBtn.onclick = () => {
+    showToken = !showToken;
     render();
   };
 
@@ -59,6 +65,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     saveMsg.textContent = "";
     saveMsgMain.textContent = "";
+
+    if (showToken) {
+      keyInput.type = "text";
+    } else {
+      keyInput.type = "password";
+    }
   }
 
   async function saveConfig() {
