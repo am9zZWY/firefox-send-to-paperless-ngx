@@ -1,4 +1,4 @@
-import { isPdfFromUrl, cleanURL, debounce } from "./util.js";
+import { cleanURL, debounce } from "./util.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
   const setupEl = document.getElementById("setup");
@@ -96,51 +96,66 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  function resetUploadButton() {
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = "Upload";
+  }
+
   async function upload() {
     if (!configured()) return;
 
     saveMsgMain.classList.remove("error");
+    saveMsgMain.textContent = "";
     uploadBtn.disabled = true;
     uploadBtn.textContent = "Uploading...";
 
-    const [tab] = await browser.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-
-    if (tab?.url && isPdfFromUrl(tab.url)) {
-      const result = await browser.runtime.sendMessage({
-        action: "uploadFromUrl",
-        url: tab.url,
-      });
-      handleResult(result);
-      return;
-    }
-
-    let pdfBuffers = [];
     try {
-      const res = await browser.tabs.sendMessage(tab.id, {
-        action: "getPdfBlobs",
-      });
-      pdfBuffers = res?.pdfBuffers || [];
-    } catch {}
-
-    if (!pdfBuffers.length) {
-      showMessage("No PDFs found on this page");
-      return;
-    }
-
-    for (const pdf of pdfBuffers) {
-      const result = await browser.runtime.sendMessage({
-        action: "uploadFromBlob",
-        buffer: pdf.buffer,
-        filename: pdf.filename,
+      const [tab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
       });
 
-      handleResult(result);
-    }
+      // The tab's own URL first, fetched with the tab's container cookies.
+      // Only real PDF bytes are uploaded; anything else falls through to
+      // the PDFs embedded in the page.
+      if (tab?.url) {
+        const result = await browser.runtime.sendMessage({
+          action: "uploadFromUrl",
+          url: tab.url,
+          cookieStoreId: tab.cookieStoreId,
+        });
+        if (!result?.notPdf) {
+          handleResult(result);
+          return;
+        }
+      }
 
-    uploadBtn.disabled = false;
-    uploadBtn.textContent = "Upload";
+      let pdfBuffers = [];
+      try {
+        const res = await browser.tabs.sendMessage(tab.id, {
+          action: "getPdfBlobs",
+        });
+        pdfBuffers = res?.pdfBuffers || [];
+      } catch {}
+
+      if (!pdfBuffers.length) {
+        handleResult({ success: false, error: "no PDF found on this page" });
+        return;
+      }
+
+      for (const pdf of pdfBuffers) {
+        const result = await browser.runtime.sendMessage({
+          action: "uploadFromBlob",
+          buffer: pdf.buffer,
+          filename: pdf.filename,
+        });
+
+        handleResult(result);
+      }
+    } catch (err) {
+      handleResult({ success: false, error: err.message });
+    } finally {
+      resetUploadButton();
+    }
   }
 });

@@ -1,23 +1,28 @@
 /**
- * Checks if a URL points to a PDF file.
- * @param {string} url - The URL to check.
- * @returns {boolean} - True if the URL ends with ".pdf" (case-insensitive).
+ * Whether bytes are a PDF ("%PDF-" magic), whatever the URL or the
+ * Content-Type claimed: a login page served in place of the PDF must not be
+ * uploaded.
+ * @param {ArrayBuffer} buffer
+ * @returns {boolean}
  */
-export async function isPdfFromUrl(url) {
+export function isPdf(buffer) {
+  const head = new Uint8Array(buffer, 0, Math.min(5, buffer.byteLength));
+  return String.fromCharCode(...head) === "%PDF-";
+}
+
+/**
+ * Filename for a PDF fetched from a URL: its last path segment, ending in
+ * ".pdf" so Paperless-ngx keeps the type.
+ * @param {string} url
+ * @returns {string}
+ */
+export function pdfFilename(url) {
+  let name = "";
   try {
-    const response = await fetch(url, {
-      method: "HEAD",
-      mode: "no-cors",
-      cache: "no-store",
-    });
-    const contentType = response.headers.get("content-type") || "";
-    return (
-      contentType.toLowerCase().includes("application/pdf") || url.toLowerCase().endsWith(".pdf")
-    );
-  } catch (err) {
-    console.warn("Failed to check file type, falling back to URL extension:", err);
-    return url.toLowerCase().endsWith(".pdf");
-  }
+    name = new URL(url).pathname.split("/").filter(Boolean).pop() || "";
+  } catch {}
+  name = name || "document";
+  return name.toLowerCase().endsWith(".pdf") ? name : `${name}.pdf`;
 }
 
 /**
