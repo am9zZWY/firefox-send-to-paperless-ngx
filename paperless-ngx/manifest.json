@@ -9,8 +9,11 @@
     "permissions": [
         "activeTab",
         "contextMenus",
+        "cookies",
         "storage",
         "tabs",
+        "webRequest",
+        "webRequestBlocking",
         "<all_urls>"
     ],
     "browser_specific_settings": {
